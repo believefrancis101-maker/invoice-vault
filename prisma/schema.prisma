@@ -1,5 +1,3 @@
-// Prisma schema for authentication slice
-// Configured with SQLite for seamless local execution; easily switchable to PostgreSQL or MySQL.
 
 generator client {
   provider = "prisma-client-js"
@@ -11,17 +9,19 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String?
-  passwordHash  String
-  emailVerified Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                    String                @id @default(cuid())
+  email                 String                @unique
+  name                  String?
+  passwordHash          String
+  emailVerified         Boolean               @default(false)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
-  sessions            Session[]
-  verificationCodes   VerificationCode[]
-  passwordResetTokens PasswordResetToken[]
+  sessions              Session[]
+  verificationCodes     VerificationCode[]
+  passwordResetTokens   PasswordResetToken[]
+  invoices              Invoice[]
+  auditLogs             AuditLog[]
 
   @@map("users")
 }
@@ -69,4 +69,42 @@ model PasswordResetToken {
   @@index([userId])
   @@index([tokenHash])
   @@map("password_reset_tokens")
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  publicId    String   @unique @default(uuid())
+  invoiceNumber String
+  clientName  String
+  description String?
+  amountKobo  Int
+  issueDate   DateTime
+  status      String   @default("DRAFT")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, invoiceNumber])
+  @@index([userId, createdAt])
+  @@index([userId, status, createdAt])
+  @@map("invoices")
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  actorUserId    String
+  action         String
+  entityType     String
+  entityPublicId String
+  entityLabel    String
+  details        String?
+  createdAt      DateTime @default(now())
+
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([actorUserId, createdAt])
+  @@index([entityPublicId])
+  @@map("audit_logs")
 }
