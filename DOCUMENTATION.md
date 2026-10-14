@@ -332,10 +332,10 @@ We also inspected SQLite's physical query plans via `EXPLAIN QUERY PLAN` for eac
 
 | Action | Primary Target | Statement Count | Observed Latency | Statement Classifications | SQLite Index Plan |
 |---|---|---|---|---|---|
-| **1. Invoice Listing** | Target 1 | **1 statement** | 1.59 ms | 1x READ (`SELECT` with `ORDER BY`) | `SEARCH invoices USING INDEX invoices_userId_createdAt_idx (userId=?)` |
-| **2. Invoice Creation** | Target 2 | **1 statement** | 6.43 ms | 1x WRITE (`INSERT` with `RETURNING`) | Table insert + unique constraint evaluation |
-| **3. Invoice Detail Lookup** | Target 3 | **1 statement** | 1.12 ms | 1x READ (`SELECT` with `LIMIT 1`) | `SEARCH invoices USING INDEX invoices_publicId_key (publicId=?)` |
-| **4. Atomic Deletion** | Supplemental | **5 statements** | 11.28 ms | 2x TX (`BEGIN`/`COMMIT`), 1x READ (`SELECT`), 1x WRITE (`INSERT audit_logs`), 1x WRITE (`DELETE invoices`) | Ownership seek + primary key delete |
+| **1. Invoice Listing** | Target 1 | **1 statement** | 1.31 ms | 1x READ (`SELECT` with `ORDER BY`) | `SEARCH invoices USING INDEX invoices_userId_createdAt_idx (userId=?)` |
+| **2. Invoice Creation** | Target 2 | **1 statement** | 7.11 ms | 1x WRITE (`INSERT` with `RETURNING`) | Table insert + unique constraint evaluation |
+| **3. Invoice Detail Lookup** | Target 3 | **1 statement** | 0.94 ms | 1x READ (`SELECT` with `LIMIT 1`) | `SEARCH invoices USING INDEX invoices_publicId_key (publicId=?)` |
+| **4. Atomic Deletion** | Supplemental | **5 statements** | 11.61 ms | 2x TX (`BEGIN`/`COMMIT`), 1x READ (`SELECT`), 1x WRITE (`INSERT audit_logs`), 1x WRITE (`DELETE invoices`) | Ownership seek + primary key delete |
 
 #### Honest Baseline & Query Count vs. Latency Distinction
 
@@ -422,72 +422,88 @@ If I built this again from scratch, I would:
 
 ---
 
-## Access Control Verification Results
+## Assessment 4 Evidence Package
 
-The automated test suite (`npm test`) verifies all security invariants across two isolated test tenants (`User A` and `User B`):
+This appendix documents all evidence collected for Assessment 4: The Records and Access Slice. Evidence files are stored in `evidence/` and linked below. Only files that were physically verified to exist are linked.
 
-```
-===============================================================
- INVOICEVAULT: ACCESS CONTROL & AUTHORIZATION TEST SUITE
- Target Server: http://localhost:3000
-===============================================================
+---
 
---- Requirement 4: Unauthenticated Access Guard ---
-  [PASS] GET /api/invoices unauthenticated receives 401
-  [PASS] POST /api/invoices unauthenticated receives 401
-  [PASS] GET /api/invoices/[publicId] unauthenticated receives 401
-  [PASS] DELETE /api/invoices/[publicId] unauthenticated receives 401
-  [PASS] GET /api/audit-logs unauthenticated receives 401
+### Evidence File Inventory
 
---- Requirement 7: Input Validation & Malformed Payload Rejection ---
-  [PASS] Rejects invalid payload: Empty invoice number
-  [PASS] Rejects invalid payload: Missing client name
-  [PASS] Rejects invalid payload: Negative amountKobo
-  [PASS] Rejects invalid payload: Non-integer kobo amount (fractional)
-  [PASS] Rejects invalid payload: Invalid status enum value
-  [PASS] Rejects invalid payload: Invalid issue date format
+| # | File | Size | Status | Description |
+|---|------|------|--------|-------------|
+| 1 | [evidence-1-public-invoice-identifier.png](evidence/evidence-1-public-invoice-identifier.png) | 49 KB | ✅ Verified | Browser screenshot of the invoice detail page with UUID in URL |
+| 2 | [evidence-2-deletion-audit-log.png](evidence/evidence-2-deletion-audit-log.png) | 35 KB | ✅ Verified | Browser screenshot of the Activity Log showing the INVOICE_DELETED event |
+| 3 | [evidence-3-access-control-tests.txt](evidence/evidence-3-access-control-tests.txt) | 9.3 KB | ✅ Verified | Full output of `npm test` — 38 automated assertions, 0 failures |
+| 4 | [evidence-4-query-measurements.txt](evidence/evidence-4-query-measurements.txt) | 10.2 KB | ✅ Verified | Full output of `npm run measure:queries` — statement counts, latencies, index plans |
 
---- Requirement 1: User A Record Lifecycle & Access ---
-  [PASS] User A creates invoice with HTTP 201
-  [PASS] Created invoice returns opaque publicId
-  [PASS] Created invoice has correct invoiceNumber
-  [PASS] Internal database ID ('id') is NOT exposed in API response
-  [PASS] User A lists invoices with HTTP 200
-  [PASS] User A's invoice list contains the newly created invoice
-  [PASS] User A views detail with HTTP 200
-  [PASS] Detail returns correct invoice by publicId
-  [PASS] Detail does NOT expose internal database ID
+---
 
---- Requirement 2: Cross-Tenant Read Isolation ---
-  [PASS] User B accessing User A's invoice receives 404 Not Found (avoids record disclosure)
-  [PASS] User B's invoice list does NOT contain User A's invoice
+### Screenshot Evidence
 
---- Requirement 3: Cross-Tenant Delete Isolation ---
-  [PASS] User B attempting to delete User A's invoice receives 404 Not Found
-  [PASS] User A's invoice was NOT deleted by User B's unauthorized request
-  [PASS] No audit event was recorded for User B's failed deletion attempt
+#### Evidence 1 — Public Invoice Identifier in URL
 
---- Requirement 6: Deletion Audit Trail & Survival ---
-  [PASS] User A deletes own invoice with HTTP 200
-  [PASS] Invoice is permanently removed from invoices table
-  [PASS] Audit record exists in database after invoice deletion
-  [PASS] Audit record action is INVOICE_DELETED
-  [PASS] Audit record preserves invoice number
-  [PASS] Audit record entityType is INVOICE
-  [PASS] User A can fetch activity audit logs via API
-  [PASS] User A's Activity Log API returns the deletion event
-  [PASS] User B's Activity Log does NOT expose User A's audit event
+**File**: [evidence-1-public-invoice-identifier.png](evidence/evidence-1-public-invoice-identifier.png)
 
---- Requirement 5: Replayed Delete Protection & Idempotency ---
-  [PASS] Replayed delete returns HTTP 404 Not Found
-  [PASS] Replayed delete does NOT create duplicate or misleading audit entries
+**Confirmed contents**: The browser address bar shows `localhost:3000/invoices/0c431455-a4e0-450c-b22a-434a3c40d18c`. The detail card displays Invoice `0001` (Client: VOICER, ₦900,000.00, Status: PAID). A "PUBLIC IDENTIFIER" field in the detail card explicitly renders the UUID `0c431455-a4e0-450c-b22a-434a3c40d18c`, confirming that the URL and the displayed identifier are both the opaque `publicId` value, not the internal cuid.
 
---- Unique Invoice Number per Owner ---
-  [PASS] First invoice with number created successfully (201)
-  [PASS] Duplicate invoice number for same user returns 409 Conflict
+#### Evidence 2 — Deletion Audit Log Survival
 
-===============================================================
- TEST EXECUTION SUMMARY: 38/38 Passed (0 Failed)
- SSR PAGE NAVIGATION: Verified (/dashboard, /invoices/new, /invoices/[publicId], /activity)
-===============================================================
-```
+**File**: [evidence-2-deletion-audit-log.png](evidence/evidence-2-deletion-audit-log.png)
+
+**Confirmed contents**: The Activity Log page (`localhost:3000/activity`) shows a single `INVOICE_DELETED` event for invoice `0001`. The event records: Entity: INVOICE, Public ID: `0c431455-a4e0-450c-b22a-434a3c40d18c`, Client: VOICER, Amount: ₦900,000.00, Status at deletion: PAID, Timestamp: 14 Oct 2026, 12:46:54. This is the same invoice shown in Evidence 1, now deleted. The audit record exists in the database and is rendered in the UI after the invoice record itself has been permanently removed, confirming audit survival.
+
+---
+
+### Access Control Audit Matrix
+
+> [!IMPORTANT]
+> **Methodology distinction**: All checks listed below with ✅ AUTOMATED were executed programmatically by `scripts/test-access-control.mjs` and `scripts/test-page-rendering.mjs`, invoked via `npm test`. The scripts create two real test users (User A and User B) with live session cookies, send HTTP requests to the running server, and assert on response status codes and response body content. **No manual curl commands or manual browser identifier-tampering sessions were performed.** Checks marked ⚠️ NOT TESTED reflect behaviours that were not exercised by the automated suite in its current form.
+
+| Check | Method | Result | Evidence |
+|---|---|---|---|
+| `GET /api/invoices` unauthenticated → 401 | ✅ AUTOMATED | PASS | evidence-3 |
+| `POST /api/invoices` unauthenticated → 401 | ✅ AUTOMATED | PASS | evidence-3 |
+| `GET /api/invoices/[publicId]` unauthenticated → 401 | ✅ AUTOMATED | PASS | evidence-3 |
+| `DELETE /api/invoices/[publicId]` unauthenticated → 401 | ✅ AUTOMATED | PASS | evidence-3 |
+| `GET /api/audit-logs` unauthenticated → 401 | ✅ AUTOMATED | PASS | evidence-3 |
+| User B reads User A's invoice → 404 | ✅ AUTOMATED | PASS | evidence-3 |
+| User B's invoice list does not contain User A's invoices | ✅ AUTOMATED | PASS | evidence-3 |
+| User B deletes User A's invoice → 404 | ✅ AUTOMATED | PASS | evidence-3 |
+| User A's invoice NOT deleted after User B's attempt | ✅ AUTOMATED | PASS | evidence-3 |
+| No audit event written for failed cross-tenant delete | ✅ AUTOMATED | PASS | evidence-3 |
+| Replayed delete of already-deleted invoice → 404 | ✅ AUTOMATED | PASS | evidence-3 |
+| Replayed delete produces no duplicate audit entries | ✅ AUTOMATED | PASS | evidence-3 |
+| Internal `id` field not exposed in list response | ✅ AUTOMATED | PASS | evidence-3 |
+| Internal `id` field not exposed in detail response | ✅ AUTOMATED | PASS | evidence-3 |
+| Public UUID visible in URL on detail page | ✅ MANUAL SCREENSHOT | PASS | evidence-1 |
+| Audit record survives after invoice deletion (UI) | ✅ MANUAL SCREENSHOT | PASS | evidence-2 |
+| Input validation: rejects empty invoice number | ✅ AUTOMATED | PASS | evidence-3 |
+| Input validation: rejects missing client name | ✅ AUTOMATED | PASS | evidence-3 |
+| Input validation: rejects negative amount | ✅ AUTOMATED | PASS | evidence-3 |
+| Input validation: rejects fractional kobo | ✅ AUTOMATED | PASS | evidence-3 |
+| Input validation: rejects invalid status enum | ✅ AUTOMATED | PASS | evidence-3 |
+| Input validation: rejects invalid date | ✅ AUTOMATED | PASS | evidence-3 |
+| Duplicate invoice number for same user → 409 | ✅ AUTOMATED | PASS | evidence-3 |
+| Raw `curl` with manually guessed public ID | ⚠️ NOT TESTED | N/A | No evidence |
+| Manual browser URL manipulation to foreign invoice | ⚠️ NOT TESTED | N/A | No evidence |
+
+**Automated test summary**: 38 total assertions, 38 passed, 0 failed (`npm test`). SSR page rendering verified for `/dashboard`, `/invoices/new`, `/invoices/[publicId]`, and `/activity`.
+
+---
+
+### Query Measurement Summary
+
+**Full output**: [evidence-4-query-measurements.txt](evidence/evidence-4-query-measurements.txt)
+
+Measured via `scripts/measure-queries.mjs` using Prisma's `$on("query")` event listener to count actual SQL statements emitted, and `EXPLAIN QUERY PLAN` for index verification.
+
+| Action | Statements | Latency (measured) | Index Used |
+|---|---|---|---|
+| Invoice Listing (`findMany`) | 1 | 1.31 ms | `SEARCH invoices USING INDEX invoices_userId_createdAt_idx` |
+| Invoice Creation (`create`) | 1 | 7.11 ms | Unique constraint evaluated on INSERT |
+| Detail Lookup (`findFirst`) | 1 | 0.94 ms | `SEARCH invoices USING INDEX invoices_publicId_key` |
+| Atomic Deletion (`$transaction`) | 5 | 11.61 ms | BEGIN → SELECT → INSERT audit → DELETE → COMMIT |
+
+> [!IMPORTANT]
+> **Honest baseline disclosure**: No prior working invoice implementation exists in the repository's Git history from which a genuine pre-optimization statement count could be measured. The counts above represent the implementation from the first working commit. Statement counts of 1 per single-record operation are the theoretical minimum for a relational database without query caching; no further reduction is possible without introducing a caching layer. The measurable optimization delivered is the **execution plan quality**: without `@@index([userId, createdAt])`, SQLite performs a full table scan (`SCAN invoices`) with an in-memory sort; with the composite index, SQLite performs an index range seek (`SEARCH invoices USING INDEX ...`), eliminating the sort and reducing lookup complexity from O(N log N) to O(log N).
