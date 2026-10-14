@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test-access-control.mjs && node scripts/test-page-rendering.mjs",
+    "measure:queries": "node scripts/measure-queries.mjs",
     "db:push": "prisma db push",
     "db:generate": "prisma generate"
   },
