@@ -9,20 +9,18 @@ function VerifyEmailContent() {
   const emailParam = searchParams.get("email") || "";
 
   const [email, setEmail] = useState(emailParam);
+  const [prevEmailParam, setPrevEmailParam] = useState(emailParam);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
-
-  // 60-second cooldown timer
   const [cooldownSeconds, setCooldownSeconds] = useState(60);
 
-  useEffect(() => {
-    if (emailParam) {
-      setEmail(emailParam);
-    }
-  }, [emailParam]);
+  if (emailParam !== prevEmailParam) {
+    setPrevEmailParam(emailParam);
+    setEmail(emailParam);
+  }
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
